@@ -16209,6 +16209,316 @@ cr.plugins_.Text = function(runtime)
 }());
 ;
 ;
+cr.plugins_.TextBox = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.TextBox.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	var elemTypes = ["text", "password", "email", "number", "tel", "url"];
+	if (navigator.userAgent.indexOf("MSIE 9") > -1)
+	{
+		elemTypes[2] = "text";
+		elemTypes[3] = "text";
+		elemTypes[4] = "text";
+		elemTypes[5] = "text";
+	}
+	instanceProto.onCreate = function()
+	{
+		if (this.runtime.isDomFree)
+		{
+			cr.logexport("[Construct 2] Textbox plugin not supported on this platform - the object will not be created");
+			return;
+		}
+		if (this.properties[7] === 6)	// textarea
+		{
+			this.elem = document.createElement("textarea");
+			jQuery(this.elem).css("resize", "none");
+		}
+		else
+		{
+			this.elem = document.createElement("input");
+			this.elem.type = elemTypes[this.properties[7]];
+		}
+		this.elem.id = this.properties[9];
+		jQuery(this.elem).appendTo(this.runtime.canvasdiv ? this.runtime.canvasdiv : "body");
+		this.elem["autocomplete"] = "off";
+		this.elem.value = this.properties[0];
+		this.elem["placeholder"] = this.properties[1];
+		this.elem.title = this.properties[2];
+		this.elem.disabled = (this.properties[4] === 0);
+		this.elem["readOnly"] = (this.properties[5] === 1);
+		this.elem["spellcheck"] = (this.properties[6] === 1);
+		this.autoFontSize = (this.properties[8] !== 0);
+		this.element_hidden = false;
+		if (this.properties[3] === 0)
+		{
+			jQuery(this.elem).hide();
+			this.visible = false;
+			this.element_hidden = true;
+		}
+		var onchangetrigger = (function (self) {
+			return function() {
+				self.runtime.trigger(cr.plugins_.TextBox.prototype.cnds.OnTextChanged, self);
+			};
+		})(this);
+		this.elem["oninput"] = onchangetrigger;
+		if (navigator.userAgent.indexOf("MSIE") !== -1)
+			this.elem["oncut"] = onchangetrigger;
+		this.elem.onclick = (function (self) {
+			return function(e) {
+				e.stopPropagation();
+				self.runtime.isInUserInputEvent = true;
+				self.runtime.trigger(cr.plugins_.TextBox.prototype.cnds.OnClicked, self);
+				self.runtime.isInUserInputEvent = false;
+			};
+		})(this);
+		this.elem.ondblclick = (function (self) {
+			return function(e) {
+				e.stopPropagation();
+				self.runtime.isInUserInputEvent = true;
+				self.runtime.trigger(cr.plugins_.TextBox.prototype.cnds.OnDoubleClicked, self);
+				self.runtime.isInUserInputEvent = false;
+			};
+		})(this);
+		this.elem.addEventListener("touchstart", function (e) {
+			e.stopPropagation();
+		}, false);
+		this.elem.addEventListener("touchmove", function (e) {
+			e.stopPropagation();
+		}, false);
+		this.elem.addEventListener("touchend", function (e) {
+			e.stopPropagation();
+		}, false);
+		jQuery(this.elem).mousedown(function (e) {
+			e.stopPropagation();
+		});
+		jQuery(this.elem).mouseup(function (e) {
+			e.stopPropagation();
+		});
+		jQuery(this.elem).keydown(function (e) {
+			if (e.which !== 13 && e.which != 27)	// allow enter and escape
+				e.stopPropagation();
+		});
+		jQuery(this.elem).keyup(function (e) {
+			if (e.which !== 13 && e.which != 27)	// allow enter and escape
+				e.stopPropagation();
+		});
+		this.lastLeft = 0;
+		this.lastTop = 0;
+		this.lastRight = 0;
+		this.lastBottom = 0;
+		this.lastWinWidth = 0;
+		this.lastWinHeight = 0;
+		this.updatePosition(true);
+		this.runtime.tickMe(this);
+	};
+	instanceProto.saveToJSON = function ()
+	{
+		return {
+			"text": this.elem.value,
+			"placeholder": this.elem.placeholder,
+			"tooltip": this.elem.title,
+			"disabled": !!this.elem.disabled,
+			"readonly": !!this.elem.readOnly,
+			"spellcheck": !!this.elem["spellcheck"]
+		};
+	};
+	instanceProto.loadFromJSON = function (o)
+	{
+		this.elem.value = o["text"];
+		this.elem.placeholder = o["placeholder"];
+		this.elem.title = o["tooltip"];
+		this.elem.disabled = o["disabled"];
+		this.elem.readOnly = o["readonly"];
+		this.elem["spellcheck"] = o["spellcheck"];
+	};
+	instanceProto.onDestroy = function ()
+	{
+		if (this.runtime.isDomFree)
+				return;
+		jQuery(this.elem).remove();
+		this.elem = null;
+	};
+	instanceProto.tick = function ()
+	{
+		this.updatePosition();
+	};
+	instanceProto.updatePosition = function (first)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		var left = this.layer.layerToCanvas(this.x, this.y, true);
+		var top = this.layer.layerToCanvas(this.x, this.y, false);
+		var right = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, true);
+		var bottom = this.layer.layerToCanvas(this.x + this.width, this.y + this.height, false);
+		if (!this.visible || !this.layer.visible || right <= 0 || bottom <= 0 || left >= this.runtime.width || top >= this.runtime.height)
+		{
+			if (!this.element_hidden)
+				jQuery(this.elem).hide();
+			this.element_hidden = true;
+			return;
+		}
+		if (left < 1)
+			left = 1;
+		if (top < 1)
+			top = 1;
+		if (right >= this.runtime.width)
+			right = this.runtime.width - 1;
+		if (bottom >= this.runtime.height)
+			bottom = this.runtime.height - 1;
+		var curWinWidth = window.innerWidth;
+		var curWinHeight = window.innerHeight;
+		if (!first && this.lastLeft === left && this.lastTop === top && this.lastRight === right && this.lastBottom === bottom && this.lastWinWidth === curWinWidth && this.lastWinHeight === curWinHeight)
+		{
+			if (this.element_hidden)
+			{
+				jQuery(this.elem).show();
+				this.element_hidden = false;
+			}
+			return;
+		}
+		this.lastLeft = left;
+		this.lastTop = top;
+		this.lastRight = right;
+		this.lastBottom = bottom;
+		this.lastWinWidth = curWinWidth;
+		this.lastWinHeight = curWinHeight;
+		if (this.element_hidden)
+		{
+			jQuery(this.elem).show();
+			this.element_hidden = false;
+		}
+		var offx = Math.round(left) + jQuery(this.runtime.canvas).offset().left;
+		var offy = Math.round(top) + jQuery(this.runtime.canvas).offset().top;
+		jQuery(this.elem).css("position", "absolute");
+		jQuery(this.elem).offset({left: offx, top: offy});
+		jQuery(this.elem).width(Math.round(right - left));
+		jQuery(this.elem).height(Math.round(bottom - top));
+		if (this.autoFontSize)
+			jQuery(this.elem).css("font-size", ((this.layer.getScale(true) / this.runtime.devicePixelRatio) - 0.2) + "em");
+	};
+	instanceProto.draw = function(ctx)
+	{
+	};
+	instanceProto.drawGL = function(glw)
+	{
+	};
+	function Cnds() {};
+	Cnds.prototype.CompareText = function (text, case_)
+	{
+		if (this.runtime.isDomFree)
+			return false;
+		if (case_ === 0)	// insensitive
+			return cr.equals_nocase(this.elem.value, text);
+		else
+			return this.elem.value === text;
+	};
+	Cnds.prototype.OnTextChanged = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.OnClicked = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.OnDoubleClicked = function ()
+	{
+		return true;
+	};
+	pluginProto.cnds = new Cnds();
+	function Acts() {};
+	Acts.prototype.SetText = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.value = text;
+	};
+	Acts.prototype.SetPlaceholder = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.placeholder = text;
+	};
+	Acts.prototype.SetTooltip = function (text)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.title = text;
+	};
+	Acts.prototype.SetVisible = function (vis)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.visible = (vis !== 0);
+	};
+	Acts.prototype.SetEnabled = function (en)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.disabled = (en === 0);
+	};
+	Acts.prototype.SetReadOnly = function (ro)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.readOnly = (ro === 0);
+	};
+	Acts.prototype.SetFocus = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.focus();
+	};
+	Acts.prototype.SetBlur = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.blur();
+	};
+	Acts.prototype.SetCSSStyle = function (p, v)
+	{
+		if (this.runtime.isDomFree)
+			return;
+		jQuery(this.elem).css(p, v);
+	};
+	Acts.prototype.ScrollToBottom = function ()
+	{
+		if (this.runtime.isDomFree)
+			return;
+		this.elem.scrollTop = this.elem.scrollHeight;
+	};
+	pluginProto.acts = new Acts();
+	function Exps() {};
+	Exps.prototype.Text = function (ret)
+	{
+		if (this.runtime.isDomFree)
+		{
+			ret.set_string("");
+			return;
+		}
+		ret.set_string(this.elem.value);
+	};
+	pluginProto.exps = new Exps();
+}());
+;
+;
 cr.plugins_.Touch = function(runtime)
 {
 	this.runtime = runtime;
@@ -17434,6 +17744,18 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
+		cr.plugins_.TextBox,
+		false,
+		true,
+		true,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
 		cr.plugins_.Touch,
 		true,
 		false,
@@ -17501,7 +17823,7 @@ cr.getProjectModel = function() { return [
 		],
 		[
 		],
-		false,
+		true,
 		false,
 		9110965938806339,
 		[],
@@ -17960,6 +18282,40 @@ cr.getProjectModel = function() { return [
 		[],
 		null
 	]
+,	[
+		"t20",
+		cr.plugins_.TextBox,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false,
+		2093854484491941,
+		[],
+		null
+	]
+,	[
+		"t21",
+		cr.plugins_.Text,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false,
+		6700139146337028,
+		[],
+		null
+	]
 	],
 	[
 	],
@@ -17988,7 +18344,7 @@ cr.getProjectModel = function() { return [
 			0,
 			[
 			[
-				[385, 195, 0, 86.44940185546875, 85.10910034179688, 0, 0, 1, 0.5038759708404541, 0.5039370059967041, 0, 0, []],
+				[134, 452, 0, 134.2059783935547, 132.1252593994141, 0, 0, 1, 0.5038759708404541, 0.5039370059967041, 0, 0, []],
 				0,
 				2,
 				[
@@ -18003,7 +18359,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[241, 57, 0, 257.2780456542969, 88.15364837646484, 0, 0, 1, 0.5050761699676514, 0.5185185074806213, 0, 0, []],
+				[241, 93, 0, 257.2780456542969, 88.15364837646484, 0, 0, 1, 0.5050761699676514, 0.5185185074806213, 0, 0, []],
 				1,
 				3,
 				[
@@ -18018,42 +18374,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[449, 611, 0, 40, 40, 0, 0, 1, 0.5, 0.5, 0, 0, []],
-				4,
-				5,
-				[
-				],
-				[
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[175.5, 597, 0, 129, 44, 0, 0, 1, 0, 0, 0, 0, []],
-				7,
-				12,
-				[
-				],
-				[
-				],
-				[
-					"BX BETA",
-					0,
-					"18pt Bebas Neue",
-					"rgb(0,0,0)",
-					1,
-					0,
-					0,
-					0,
-					0
-				]
-			]
-,			[
-				[247, 192, 0, 85.65998077392578, 88.36097717285156, 0, 0, 1, 0.5270270109176636, 0.4978165924549103, 0, 0, []],
+				[354, 263, 0, 126.4623336791992, 130.4498901367188, 0, 0, 1, 0.5270270109176636, 0.4978165924549103, 0, 0, []],
 				2,
 				17,
 				[
@@ -18068,7 +18389,7 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[108, 198, 0, 86.85272979736328, 92.22507476806641, 0, 0, 1, 0.5154638886451721, 0.5194174647331238, 0, 0, []],
+				[138, 263, 0, 124.2121200561523, 131.8953552246094, 0, 0, 1, 0.5154638886451721, 0.5194174647331238, 0, 0, []],
 				10,
 				19,
 				[
@@ -18083,84 +18404,9 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[103, 343, 0, 86.40574645996094, 69.99535369873047, 0, 0, 1, 0.5, 0.5215311050415039, 0, 0, []],
-				11,
-				20,
-				[
-				],
-				[
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[243, 341, 0, 87.27153015136719, 67.99468231201172, 0, 0, 1, 0.5060241222381592, 0.4845360815525055, 0, 0, []],
-				12,
-				21,
-				[
-				],
-				[
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[382, 339, 0, 87.30979156494141, 87.30979156494141, 0, 0, 1, 0.5, 0.5038759708404541, 0, 0, []],
+				[354, 449, 0, 131, 131, 0, 0, 1, 0.5, 0.5038759708404541, 0, 0, []],
 				13,
 				22,
-				[
-				],
-				[
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[101, 494, 0, 87.95931243896484, 83.52725219726563, 0, 0, 1, 0.4961240291595459, 0.5020408034324646, 0, 0, []],
-				14,
-				23,
-				[
-				],
-				[
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[240, 499, 0, 85.32291412353516, 85.32291412353516, 0, 0, 1, 0.5038759708404541, 0.5, 0, 0, []],
-				15,
-				24,
-				[
-				],
-				[
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[379, 504, 0, 86.58254241943359, 54.24881362915039, 0, 0, 1, 0.5020747184753418, 0.5165562629699707, 0, 0, []],
-				16,
-				25,
 				[
 				],
 				[
@@ -18204,7 +18450,7 @@ cr.getProjectModel = function() { return [
 			0,
 			[
 			[
-				[241.3059844970703, 583, 0, 257.2780456542969, 88.15364837646484, 0, 0, 1, 0.5050761699676514, 0.5185185074806213, 0, 0, []],
+				[232, 122, 0, 257.2780456542969, 88.15364837646484, 0, 0, 1, 0.5050761699676514, 0.5185185074806213, 0, 0, []],
 				1,
 				1,
 				[
@@ -18219,18 +18465,44 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[53, 579, 0, 40, 40, 0, 0, 1, 0.5, 0.5, 0, 0, []],
+				[95, 262, 0, 290, 22, 0, 0, 1, 0, 0, 0, 0, []],
+				20,
 				5,
+				[
+				],
+				[
+				],
+				[
+					"",
+					"",
+					"",
+					1,
+					1,
+					0,
+					0,
+					0,
+					1,
+					""
+				]
+			]
+,			[
+				[96, 234, 0, 200, 30, 0, 0, 1, 0, 0, 0, 0, []],
+				21,
 				8,
 				[
 				],
 				[
 				],
 				[
+					"Ingresa tu direccion",
 					0,
-					"Default",
+					"12pt Arial",
+					"rgb(0,0,0)",
 					0,
-					1
+					0,
+					0,
+					0,
+					0
 				]
 			]
 			],
@@ -18327,377 +18599,6 @@ cr.getProjectModel = function() { return [
 			1,
 			"desktop",
 false,false,245864949302059,false
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			4028371403876004,
-			[
-			[
-				3,
-				cr.plugins_.Mouse.prototype.cnds.OnClick,
-				null,
-				1,
-				false,
-				false,
-				false,
-				4548792925746123,
-				false
-				,[
-				[
-					3,
-					0
-				]
-,				[
-					3,
-					0
-				]
-				]
-			]
-			],
-			[
-			[
-				0,
-				cr.plugins_.Sprite.prototype.acts.StartAnim,
-				null,
-				3798637208756045,
-				false
-				,[
-				[
-					3,
-					0
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			5733027301194198,
-			[
-			[
-				3,
-				cr.plugins_.Mouse.prototype.cnds.OnObjectClicked,
-				null,
-				1,
-				false,
-				false,
-				false,
-				9354006271801034,
-				false
-				,[
-				[
-					3,
-					0
-				]
-,				[
-					3,
-					0
-				]
-,				[
-					4,
-					4
-				]
-				]
-			]
-			],
-			[
-			[
-				-1,
-				cr.system_object.prototype.acts.NextPrevLayout,
-				null,
-				8064701374458821,
-				false
-				,[
-				[
-					3,
-					0
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			5055512966562612,
-			[
-			[
-				3,
-				cr.plugins_.Mouse.prototype.cnds.OnObjectClicked,
-				null,
-				1,
-				false,
-				false,
-				false,
-				410464128413685,
-				false
-				,[
-				[
-					3,
-					0
-				]
-,				[
-					3,
-					0
-				]
-,				[
-					4,
-					5
-				]
-				]
-			]
-			],
-			[
-			[
-				-1,
-				cr.system_object.prototype.acts.GoToLayout,
-				null,
-				2835117851423605,
-				false
-				,[
-				[
-					6,
-					"main"
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			6809687698306561,
-			[
-			[
-				8,
-				cr.plugins_.Keyboard.prototype.cnds.OnKey,
-				null,
-				1,
-				false,
-				false,
-				false,
-				6535754348293087,
-				false
-				,[
-				[
-					9,
-					39
-				]
-				]
-			]
-			],
-			[
-			[
-				-1,
-				cr.system_object.prototype.acts.NextPrevLayout,
-				null,
-				7571009680634622,
-				false
-				,[
-				[
-					3,
-					0
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			168756779034067,
-			[
-			[
-				8,
-				cr.plugins_.Keyboard.prototype.cnds.OnKey,
-				null,
-				1,
-				false,
-				false,
-				false,
-				3383178390832854,
-				false
-				,[
-				[
-					9,
-					37
-				]
-				]
-			]
-			],
-			[
-			[
-				-1,
-				cr.system_object.prototype.acts.NextPrevLayout,
-				null,
-				2627607862142836,
-				false
-				,[
-				[
-					3,
-					1
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			8023950502432143,
-			[
-			[
-				3,
-				cr.plugins_.Mouse.prototype.cnds.OnObjectClicked,
-				null,
-				1,
-				false,
-				false,
-				false,
-				6561034971329341,
-				false
-				,[
-				[
-					3,
-					0
-				]
-,				[
-					3,
-					0
-				]
-,				[
-					4,
-					10
-				]
-				]
-			]
-			],
-			[
-			[
-				-1,
-				cr.system_object.prototype.acts.GoToLayout,
-				null,
-				1226418361618997,
-				false
-				,[
-				[
-					6,
-					"asistencia"
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			4937771790187785,
-			[
-			[
-				3,
-				cr.plugins_.Mouse.prototype.cnds.OnObjectClicked,
-				null,
-				1,
-				false,
-				false,
-				false,
-				9547792241421772,
-				false
-				,[
-				[
-					3,
-					0
-				]
-,				[
-					3,
-					0
-				]
-,				[
-					4,
-					2
-				]
-				]
-			]
-			],
-			[
-			[
-				-1,
-				cr.system_object.prototype.acts.GoToLayout,
-				null,
-				1640456778933457,
-				false
-				,[
-				[
-					6,
-					"mapa"
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			null,
-			1368180686266573,
-			[
-			[
-				3,
-				cr.plugins_.Mouse.prototype.cnds.IsOverObject,
-				null,
-				0,
-				false,
-				false,
-				false,
-				2869833999901729,
-				false
-				,[
-				[
-					4,
-					10
-				]
-				]
-			]
-			],
-			[
-			[
-				10,
-				cr.plugins_.Sprite.prototype.acts.SetAnim,
-				null,
-				7558376860037113,
-				false
-				,[
-				[
-					1,
-					[
-						2,
-						"root"
-					]
-				]
-,				[
-					3,
-					1
-				]
-				]
-			]
-			]
 		]
 ,		[
 			0,
@@ -18817,6 +18718,88 @@ false,false,245864949302059,false
 				[
 					3,
 					1
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			null,
+			false,
+			null,
+			2073936838294361,
+			[
+			[
+				9,
+				cr.plugins_.Touch.prototype.cnds.OnTapGestureObject,
+				null,
+				1,
+				false,
+				false,
+				false,
+				2039122835717734,
+				false
+				,[
+				[
+					4,
+					2
+				]
+				]
+			]
+			],
+			[
+			[
+				-1,
+				cr.system_object.prototype.acts.GoToLayout,
+				null,
+				6334245534931367,
+				false
+				,[
+				[
+					6,
+					"mapa"
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			null,
+			false,
+			null,
+			9283157737674941,
+			[
+			[
+				9,
+				cr.plugins_.Touch.prototype.cnds.OnTapGestureObject,
+				null,
+				1,
+				false,
+				false,
+				false,
+				9075787743010361,
+				false
+				,[
+				[
+					4,
+					1
+				]
+				]
+			]
+			],
+			[
+			[
+				-1,
+				cr.system_object.prototype.acts.GoToLayout,
+				null,
+				4581554811490877,
+				false
+				,[
+				[
+					6,
+					"main"
 				]
 				]
 			]
